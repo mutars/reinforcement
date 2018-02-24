@@ -136,7 +136,7 @@ class MCTSNode(object):
                 break
 
             best_action = np.argmax(current.child_action_score)
-            current, reward = current.maybe_add_child(best_action, game)
+            current, reward, new_view = current.maybe_add_child(best_action, game)
         return current, reward
 
     def maybe_add_child(self, action, game):
@@ -150,7 +150,7 @@ class MCTSNode(object):
             new_view, reward, _ = game.getNextState(action)
             #should be equal to
             #assert self.children[action].view == new_view
-        return self.children[action], reward
+        return self.children[action], reward, new_view
 
     def revert_visits(self, up_to):
         """Revert visit increments.

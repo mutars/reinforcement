@@ -32,13 +32,15 @@ class AtariGame(Game):
         return 3
 
     def getNextState(self, action):
-        observation, reward, done, info = self.env.step(action)
+        move = self.getValidMoves()[action]
+        #print(move)
+        observation, reward, done, info = self.env.step(move)
         self.env.step(1)
         self.total_reward += reward
         self.done = True if info['ale.lives'] < 5 else False
         return observation, reward, done
 
-    def getValidMoves(self, board, player):
+    def getValidMoves(self):
         return [0,2,3]
 
     def isDone(self):

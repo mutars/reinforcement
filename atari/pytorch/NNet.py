@@ -62,28 +62,28 @@ class NNetWrapper(NeuralNet):
 
             while batch_idx < int(len(examples)/args.batch_size):
                 sample_ids = np.random.randint(len(examples), size=args.batch_size)
-                boards, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
-                boards = torch.FloatTensor(np.array(boards).astype(np.float64))
+                views, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
+                views = torch.FloatTensor(np.array(views).astype(np.float64))
                 target_pis = torch.FloatTensor(np.array(pis))
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
 
                 # predict
                 if args.cuda:
-                    boards, target_pis, target_vs = boards.contiguous().cuda(), target_pis.contiguous().cuda(), target_vs.contiguous().cuda()
-                boards, target_pis, target_vs = Variable(boards), Variable(target_pis), Variable(target_vs)
+                    views, target_pis, target_vs = views.contiguous().cuda(), target_pis.contiguous().cuda(), target_vs.contiguous().cuda()
+                views, target_pis, target_vs = Variable(views), Variable(target_pis), Variable(target_vs)
 
                 # measure data loading time
                 data_time.update(time.time() - end)
 
                 # compute output
-                out_pi, out_v = self.nnet(boards)
+                out_pi, out_v = self.nnet(views)
                 l_pi = self.loss_pi(target_pis, out_pi)
                 l_v = self.loss_v(target_vs, out_v)
                 total_loss = l_pi + l_v
 
                 # record loss
-                pi_losses.update(l_pi.data[0], boards.size(0))
-                v_losses.update(l_v.data[0], boards.size(0))
+                pi_losses.update(l_pi.data[0], views.size(0))
+                v_losses.update(l_v.data[0], views.size(0))
 
                 # compute gradient and do SGD step
                 optimizer.zero_grad()
@@ -125,16 +125,16 @@ class NNetWrapper(NeuralNet):
         self.nnet.eval()
         pi, v = self.nnet(board)
 
-        print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
+        #print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
         return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
 
-    def loss_pi(self, inputs, targets):
-        return -F.cross_entropy(inputs,targets )
-        #return -torch.sum(targets*outputs)/targets.size()[0]
+    def loss_pi(self, targets, outputs):
+        #return -F.cross_entropy(targets, outputs)
+        return -torch.sum(targets*outputs)/targets.size()[0]
 
-    def loss_v(self, inputs, targets):
-        return F.mse_loss(inputs, targets)
-        #return torch.sum((targets-outputs.view(-1))**2)/targets.size()[0]
+    def loss_v(self, targets, outputs):
+        #return F.mse_loss(targets, outputs)
+        return torch.sum((targets-outputs.view(-1))**2)/targets.size()[0]
 
     def save_checkpoint(self, folder='checkpoint', filename='atari_checkpoint.pth.tar'):
         filepath = os.path.join(folder, filename)
