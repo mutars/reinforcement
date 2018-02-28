@@ -16,6 +16,8 @@ class GameSession:
         self.max_score = 0
 
     def init_game(self):
+        self.game_end_leaf = None
+        self.max_score = 0
         for x in range(10):
             view = self.game.getInitBoard()
             if np.array_equal(self.mctc_root.view,view):
@@ -28,16 +30,28 @@ class GameSession:
             cur_node, reward = cur_node.select_leaf(self.game)
             # if game is over, override the value estimate with the true score
             if self.game.isDone():
-                value = -1 if self.game.getTotalScore() == 0 else self.game.getTotalScore() / (1 + self.game.getTotalScore())
-                self.max_score = self.game.getTotalScore()
+                value = -1 if self.game.getTotalScore() == 0 else self.game.getTotalScore()
+                self.max_score = value
                 cur_node.backup_total_value(value, up_to=self.mctc_root)
+                self.game_end_leaf = cur_node
                 break
             elif not cur_node.is_expanded:
                 #leaf.add_virtual_loss(up_to=self.root)
                 move_prob, t_value = self.nnet.predict(self.get_cum_view(cur_node))
                 cur_node.incorporate_results(move_prob, t_value, up_to=self.mctc_root)
 
-    def play_game(self, render=False):
+    def makeExamples(self, node, value):
+        current = node
+        train_examples = []
+        while current.parent.action is not None:
+            view = self.get_cum_view(current)
+            pis = np.zeros([current.action_size], dtype=np.float64)
+            pis[current.action] = 1
+            train_examples.append((view, pis, value))
+            current = current.parent
+        return train_examples
+
+    '''def play_game(self, render=False):
         self.init_game()
         node = self.mctc_root
         step = 0
@@ -56,7 +70,7 @@ class GameSession:
                 self.game.env.render()
             if self.game.isDone():
                 value = np.tanh(self.game.getTotalScore())
-                return [(x[0],x[1], value) for x in train_examples]
+                return [(x[0],x[1], value) for x in train_examples]'''
 
 
     def play_move(self, node, step, action):

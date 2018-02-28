@@ -67,4 +67,4 @@ class AtariNNet(nn.Module):
         pi = self.fc3(s)  # batch_size x action_size
         v = self.fc4(s)  # batch_size x 1
 
-        return F.log_softmax(pi, dim=1), F.tanh(v)
+        return F.relu(pi), F.relu(v)

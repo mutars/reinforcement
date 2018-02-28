@@ -25,7 +25,7 @@ from atari.pytorch.AtariNNet import AtariNNet as atarinet
 
 args = dotdict({
     'lr': 0.001,
-    'dropout': 0.3,
+    'dropout': 0.0,
     'epochs': 10,
     'batch_size': 64,
     'cuda': torch.cuda.is_available(),
@@ -64,7 +64,7 @@ class NNetWrapper(NeuralNet):
                 sample_ids = np.random.randint(len(examples), size=args.batch_size)
                 views, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
                 views = torch.FloatTensor(np.array(views).astype(np.float64))
-                target_pis = torch.FloatTensor(np.array(pis))
+                target_pis = torch.FloatTensor(np.array(pis).astype(np.float64))
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
 
                 # predict
@@ -75,18 +75,20 @@ class NNetWrapper(NeuralNet):
                 # measure data loading time
                 data_time.update(time.time() - end)
 
+                # compute gradient and do SGD step
+                optimizer.zero_grad()
+
                 # compute output
                 out_pi, out_v = self.nnet(views)
                 l_pi = self.loss_pi(target_pis, out_pi)
                 l_v = self.loss_v(target_vs, out_v)
+                l_cat = self.cat_entropy(out_pi)
                 total_loss = l_pi + l_v
 
                 # record loss
                 pi_losses.update(l_pi.data[0], views.size(0))
                 v_losses.update(l_v.data[0], views.size(0))
 
-                # compute gradient and do SGD step
-                optimizer.zero_grad()
                 total_loss.backward()
                 optimizer.step()
 
@@ -126,15 +128,22 @@ class NNetWrapper(NeuralNet):
         pi, v = self.nnet(board)
 
         #print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
-        return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
+        return pi.data.cpu().numpy()[0], v.data.cpu().numpy()[0]
 
     def loss_pi(self, targets, outputs):
-        #return -F.cross_entropy(targets, outputs)
+        #return -F.cross_entropy(outputs, targets)
         return -torch.sum(targets*outputs)/targets.size()[0]
 
     def loss_v(self, targets, outputs):
         #return F.mse_loss(targets, outputs)
         return torch.sum((targets-outputs.view(-1))**2)/targets.size()[0]
+
+    def cat_entropy(self, logits):
+        a0 = logits - torch.max(logits, 1, True)[0]
+        ea0 = torch.exp(a0)
+        z0 = torch.sum(ea0, 1, True)
+        p0 = ea0 / z0
+        return torch.sum(p0 * (torch.log(z0) - a0), 1)
 
     def save_checkpoint(self, folder='checkpoint', filename='atari_checkpoint.pth.tar'):
         filepath = os.path.join(folder, filename)
@@ -151,6 +160,6 @@ class NNetWrapper(NeuralNet):
         # https://github.com/pytorch/examples/blob/master/imagenet/main.py#L98
         filepath = os.path.join(folder, filename)
         if not os.path.exists(filepath):
-            raise("No model in path {}".format(filepath))
+            return
         checkpoint = torch.load(filepath, map_location=lambda storage, loc: storage)
         self.nnet.load_state_dict(checkpoint['state_dict'])

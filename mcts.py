@@ -127,7 +127,7 @@ class MCTSNode(object):
 
     def select_leaf(self, game):
         current = self
-        reward = 0
+        rewards = 0
         # pass_move = self.action_size * self.action_size
         while True:
             current.N += 1
@@ -137,11 +137,12 @@ class MCTSNode(object):
 
             best_action = np.argmax(current.child_action_score)
             current, reward, new_view = current.maybe_add_child(best_action, game)
-        return current, reward
+            rewards += reward
+        return current, rewards
 
     def maybe_add_child(self, action, game):
         """ Adds child node for fcoord if it doesn't already exist, and returns it. """
-        reward = 0
+        reward = -1
         if action not in self.children:
             new_view, reward, _ = game.getNextState(action)
             self.children[action] = MCTSNode(
