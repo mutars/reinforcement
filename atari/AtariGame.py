@@ -8,7 +8,7 @@ class AtariGame(Game):
     def __init__(self, env_name='Breakout-v0', seed = 0):
         self.env = gym.make(env_name)
         self.env_name = env_name
-        self.env.env.frameskip = 1
+        self.env.env.frameskip = 3
         self.env.env.ale.setInt(b'random_seed', 1)
         self.env.env.ale.loadROM(self.env.env.game_path)
 

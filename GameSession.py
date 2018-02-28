@@ -28,7 +28,7 @@ class GameSession:
             cur_node, reward = cur_node.select_leaf(self.game)
             # if game is over, override the value estimate with the true score
             if self.game.isDone():
-                value = self.game.getTotalScore() / (1 + self.game.getTotalScore())
+                value = -1 if self.game.getTotalScore() == 0 else self.game.getTotalScore() / (1 + self.game.getTotalScore())
                 self.max_score = self.game.getTotalScore()
                 cur_node.backup_total_value(value, up_to=self.mctc_root)
                 break
@@ -60,9 +60,13 @@ class GameSession:
 
 
     def play_move(self, node, step, action):
+        next_node, reward, view = node.maybe_add_child(action, self.game)
+        if not next_node.is_expanded:
+            #leaf.add_virtual_loss(up_to=self.root)
+            move_prob, t_value = self.nnet.predict(self.get_cum_view(next_node))
+            next_node.incorporate_results(move_prob, t_value, up_to=self.mctc_root)
         pi = node.children_as_pi(step < TEMPERATURE_CUTOFF)
         q = node.Q
-        next_node, reward, view = node.maybe_add_child(action, self.game)
         return pi,q, next_node, view
 
 
@@ -71,9 +75,9 @@ class GameSession:
         Highest N is most robust indicator. In the early stage of the game, pick
         a move weighted by visit count; later on, pick the absolute max.'''
         if step > TEMPERATURE_CUTOFF:
-            action = np.argmax(node.child_N)
+            action = np.argmax(node.child_action_score)
         else:
-            cdf = node.child_N.cumsum()
+            cdf = node.child_action_score.cumsum()
             cdf /= cdf[-1]
             selection = random.random()
             action = cdf.searchsorted(selection)
@@ -89,7 +93,7 @@ class GameSession:
                 result = np.dstack((result, leaf.parent.view))
                 leaf = leaf.parent
             else:
-                result = np.dstack((first, result))
+                result = np.dstack((result, np.zeros(shape)))
         return result
 
     def get_cum_view_from_queue(self, queue):
@@ -99,5 +103,5 @@ class GameSession:
             if len(queue) > 0:
                 result = np.dstack((result, queue.popleft()))
             else:
-                result = np.dstack((first, result))
+                result = np.dstack((result, np.zeros(shape)))
         return result

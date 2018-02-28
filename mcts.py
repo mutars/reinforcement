@@ -80,8 +80,8 @@ class MCTSNode(object):
         self.children = {}  # map of flattened moves to resulting MCTSNode
 
     def __repr__(self):
-        # TODO
-        return "Node =%s" % self.N
+        inner_lines = ','.join('%s:%s' % (k, v) for k, v in self.children.items())
+        return "Node Q=%s child_U=%s childeren=> {\n %s }" % (str(self.Q), str(self.child_U), inner_lines)
 
     @property
     def child_action_score(self):
@@ -216,10 +216,10 @@ class MCTSNode(object):
         slightly larger than unity to encourage diversity in early play and
         hopefully to move away from 3-3s
         """
-        probs = self.child_N
+        probs = self.child_U
         if squash:
             probs = probs ** .95
-        return probs / np.sum(probs)
+        return probs/sum(probs)
 
     def most_visited_path(self):
         node = self
