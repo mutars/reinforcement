@@ -25,13 +25,18 @@ from atari.pytorch.AtariNNet import AtariNNet as atarinet
 
 args = dotdict({
     'lr': 0.001,
-    'dropout': 0.3,
-    'epochs': 10,
-    'batch_size': 64,
+    'dropout': 0,
+    'epochs': 20,
+    'batch_size': 2,
     'cuda': torch.cuda.is_available(),
     'num_channels': 32,
     'num_backward_frames': 8
 })
+
+
+def view_to_tensor(board):
+    return torch.cat([FV.to_tensor(b) for b in board])
+
 
 class NNetWrapper(NeuralNet):
     def __init__(self, game):
@@ -63,14 +68,15 @@ class NNetWrapper(NeuralNet):
             while batch_idx < int(len(examples)/args.batch_size):
                 sample_ids = np.random.randint(len(examples), size=args.batch_size)
                 views, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
-                views = torch.FloatTensor(np.array(views).astype(np.float64))
-                target_pis = torch.FloatTensor(np.array(pis))
-                target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
+
+                views = torch.stack([view_to_tensor(v) for v in views])
+                target_pis = torch.LongTensor(np.array(pis))
+                target_vs = torch.FloatTensor(np.reshape(np.array(vs).astype(np.float32), (-1,1)))
 
                 # predict
                 if args.cuda:
                     views, target_pis, target_vs = views.contiguous().cuda(), target_pis.contiguous().cuda(), target_vs.contiguous().cuda()
-                views, target_pis, target_vs = Variable(views), Variable(target_pis), Variable(target_vs)
+                #views, target_pis, target_vs = Variable(views), Variable(target_pis), Variable(target_vs)
 
                 # measure data loading time
                 data_time.update(time.time() - end)
@@ -118,23 +124,22 @@ class NNetWrapper(NeuralNet):
         start = time.time()
 
         # preparing input
-        board = FV.to_tensor(board)
+        board = view_to_tensor(board)
         if args.cuda: board = board.contiguous().cuda()
-        board = Variable(board, volatile=True)
-        #board = board.view(1, self.observation_shape)
-        self.nnet.eval()
-        pi, v = self.nnet(board)
-
+        with torch.no_grad():
+            self.nnet.eval()
+            pi, v = self.nnet(board)
+            pi, v = F.softmax(pi, dim=1).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
         #print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
-        return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
+        return pi, v
 
     def loss_pi(self, targets, outputs):
-        #return -F.cross_entropy(targets, outputs)
-        return -torch.sum(targets*outputs)/targets.size()[0]
+        return -F.cross_entropy(outputs, targets)
+        #return -torch.sum(targets*outputs)/targets.size()[0]
 
     def loss_v(self, targets, outputs):
-        #return F.mse_loss(targets, outputs)
-        return torch.sum((targets-outputs.view(-1))**2)/targets.size()[0]
+        return F.mse_loss(outputs, targets)
+        #return torch.sum((targets-outputs.view(-1))**2)/targets.size()[0]
 
     def save_checkpoint(self, folder='checkpoint', filename='atari_checkpoint.pth.tar'):
         filepath = os.path.join(folder, filename)

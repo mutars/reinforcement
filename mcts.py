@@ -23,14 +23,11 @@ import collections
 import random
 import math
 
-# import coords
-# import go
-
 MAX_DEPTH = 1000000
 
 # Exploration constant
 c_PUCT = 1.38
-
+global_next_id = 1
 
 # Dirichlet noise, as a function of go.N
 
@@ -69,19 +66,26 @@ class MCTSNode(object):
         self.view = view
         self.is_expanded = False
         self.action_size = action_size
-
-        #self.child_short_term_v = np.zeros([action_size], dtype=np.float32)
-        #self.child_short_term_n = np.zeros([action_size], dtype=np.float32)
         self.child_N = np.zeros([action_size], dtype=np.float32)
         self.child_W = np.zeros([action_size], dtype=np.float32)
         # save a copy of the original prior before it gets mutated by d-noise.
         self.original_prior = np.zeros([action_size], dtype=np.float32)
         self.child_prior = np.zeros([action_size], dtype=np.float32)
         self.children = {}  # map of flattened moves to resulting MCTSNode
+        global global_next_id
+        self.id = global_next_id
+        global_next_id += 1
 
     def __repr__(self):
-        inner_lines = ','.join('%s:%s' % (k, v) for k, v in self.children.items())
-        return "Node Q=%s child_U=%s childeren=> {\n %s }" % (str(self.Q), str(self.child_U), inner_lines)
+        #inner_lines = ','.join('%s:%s' % (k, v) for k, v in self.children.items())
+        line = "[Q+U=%s]" % (str(self.child_Q + self.child_U))
+        return line
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        return self.id == other.id
 
     @property
     def child_action_score(self):
@@ -116,18 +120,8 @@ class MCTSNode(object):
     def W(self, value):
         self.parent.child_W[self.action] = value
 
-    ''''@property
-    def short_W(self):
-        return self.parent.child_short_term_v[self.action]
-
-    @short_W.setter
-    def short_W(self, value):
-        self.parent.child_short_term_v[self.action] = value
-        self.parent.child_short_term_n[self.action] += 1'''
-
-    def select_leaf(self, game):
+    def select_leaf(self, next_state_supplier):
         current = self
-        reward = 0
         # pass_move = self.action_size * self.action_size
         while True:
             current.N += 1
@@ -136,21 +130,16 @@ class MCTSNode(object):
                 break
 
             best_action = np.argmax(current.child_action_score)
-            current, reward, new_view = current.maybe_add_child(best_action, game)
-        return current, reward
+            new_view, _ , _ = next_state_supplier(best_action)
+            current = current.maybe_add_child(best_action, new_view)
+        return current
 
-    def maybe_add_child(self, action, game):
+    def maybe_add_child(self, action, view):
         """ Adds child node for fcoord if it doesn't already exist, and returns it. """
-        reward = 0
         if action not in self.children:
-            new_view, reward, _ = game.getNextState(action)
             self.children[action] = MCTSNode(
-                new_view, action_size=self.action_size, action=action, parent=self)
-        else:
-            new_view, reward, _ = game.getNextState(action)
-            #should be equal to
-            #assert self.children[action].view == new_view
-        return self.children[action], reward, new_view
+                view, action_size=self.action_size, action=action, parent=self)
+        return self.children[action]
 
     def revert_visits(self, up_to):
         """Revert visit increments.
@@ -180,24 +169,10 @@ class MCTSNode(object):
             return
         self.is_expanded = True
         self.original_prior = self.child_prior = move_probabilities
-        # initialize child Q as current node's value, to prevent dynamics where
-        # if B is winning, then B will only ever explore 1 move, because the Q
-        # estimation will be so much larger than the 0 of the other moves.
-        #
-        # Conversely, if W is winning, then B will explore all 362 moves before
-        # continuing to explore the most favorable move. This is a waste of search.
-        #
-        # The value seeded here acts as a prior, and gets averaged into Q calculations.
         self.child_W = np.ones([self.action_size], dtype=np.float32) * total_value
         self.backup_total_value(total_value, up_to=up_to)
 
     def backup_total_value(self, value, up_to=None):
-        """Propagates a value estimation up to the root node.
-
-        Args:
-            value: the value to be propagated (1 = black wins, -1 = white wins)
-            up_to: the node to propagate until.
-        """
         self.W += value
         if self.parent is None or self is up_to:
             return
@@ -216,9 +191,9 @@ class MCTSNode(object):
         slightly larger than unity to encourage diversity in early play and
         hopefully to move away from 3-3s
         """
-        probs = self.child_U
+        probs = self.child_N
         if squash:
-            probs = probs ** .95
+            probs = probs ** .98
         return probs/sum(probs)
 
     def most_visited_path(self):

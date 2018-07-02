@@ -5,23 +5,25 @@ import gym
 
 class AtariGame(Game):
 
-    def __init__(self, env_name='Breakout-v0', seed = 0):
+    def __init__(self, env_name='Breakout-v0', state = None):
         self.env = gym.make(env_name)
         self.env_name = env_name
-        self.env.env.frameskip = 3
-        self.env.env.ale.setInt(b'random_seed', 1)
-        self.env.env.ale.loadROM(self.env.env.game_path)
+        self.state = state
+        if state is None:
+            self.state = self.env.unwrapped.clone_full_state()
 
+        self.env.unwrapped.frameskip = 4
         self.done = False
-        self.observation_shape = self.env.observation_space.shape
+        self.observation_shape = (self.env.observation_space.shape[0],self.env.observation_space.shape[1],1)
         self.total_reward = 0
 
     def getInitBoard(self):
         self.total_reward = 0
         self.done = False
         self.env.reset()
-        observation, reward, done, info = self.env.step(1)
-        return observation
+        self.env.unwrapped.restore_full_state(self.state)
+        self.env.step(1)
+        return self.env.unwrapped.ale.getScreenGrayscale()
 
     def getBoardSize(self):
         # (a,b) tuple
@@ -32,13 +34,14 @@ class AtariGame(Game):
         return 3
 
     def getNextState(self, action):
+        #print(action, end='', flush=True)
+        #print(' ', end='', flush=True)
         move = self.getValidMoves()[action]
-        #print(move)
-        observation, reward, done, info = self.env.step(move)
+        observation, reward, _, info = self.env.step(move)
         self.env.step(1)
         self.total_reward += reward
         self.done = True if info['ale.lives'] < 5 else False
-        return observation, reward, done
+        return self.env.unwrapped.ale.getScreenGrayscale(), reward, self.done
 
     def getValidMoves(self):
         return [0,2,3]
